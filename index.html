@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Arnico — Control de Flujo Energético</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,500;0,600;0,700;1,700&family=Share+Tech+Mono&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <script>
+    window.tailwind = {
+      config: {
+        theme: {
+          extend: {
+            colors: {
+              steel: {
+                950:"#06090d",900:"#0d1319",850:"#121b24",800:"#182430",
+                700:"#243444",600:"#355067",500:"#557089",400:"#87a0b3",
+                300:"#b8c5cf",200:"#dbe3e8",100:"#eff4f7"
+              },
+              electric:{blue:"#1ec8ff",orange:"#ff9f1a",green:"#22d38b",red:"#ff5f6d"}
+            },
+            fontFamily:{
+              display:['"Chakra Petch"',"sans-serif"],
+              mono:['"Share Tech Mono"',"monospace"],
+              body:['"Manrope"',"sans-serif"]
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <!-- Pinned Babel 7 — avoids Babel 8 automatic JSX runtime issue in CDN context -->
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+  <style>
+    :root { color-scheme: dark; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Manrope', sans-serif;
+      background:
+        radial-gradient(circle at 5% 3%,  rgba(30,200,255,0.14), transparent 28%),
+        radial-gradient(circle at 92% 8%,  rgba(255,159,26,0.13), transparent 24%),
+        linear-gradient(160deg, #03060a 0%, #080e16 42%, #0d1720 100%);
+      min-height: 100vh;
+    }
+    body::before {
+      content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent 86%);
+    }
+
+    /* ── SVG FLOW ANIMATIONS ──────────────────────── */
+    @keyframes flowMain   { from{stroke-dashoffset:60}  to{stroke-dashoffset:0} }
+    @keyframes flowBus    { from{stroke-dashoffset:80}  to{stroke-dashoffset:0} }
+    @keyframes flowBranch { from{stroke-dashoffset:40}  to{stroke-dashoffset:0} }
+    @keyframes warnBlink  { 0%,100%{opacity:1} 50%{opacity:.28} }
+    @keyframes itmFlash   {
+      0%  { filter:drop-shadow(0 0 0px #1ec8ff); }
+      40% { filter:drop-shadow(0 0 22px #1ec8ff) drop-shadow(0 0 50px rgba(30,200,255,.45)); }
+      100%{ filter:drop-shadow(0 0 8px rgba(30,200,255,.3)); }
+    }
+    @keyframes fadeUp    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes modalIn   { from{opacity:0;transform:scale(0.96) translateY(12px)} to{opacity:1;transform:scale(1) translateY(0)} }
+    @keyframes arnicoGlow{
+      0%,100%{ text-shadow:0 0 18px rgba(30,200,255,.5), 0 0 36px rgba(30,200,255,.2); }
+      50%    { text-shadow:0 0 28px rgba(30,200,255,.85),0 0 60px rgba(30,200,255,.4); }
+    }
+
+    .flow-main   { stroke-dasharray:18 9;  animation:flowMain   1.1s linear infinite; }
+    .flow-bus    { stroke-dasharray:22 10; animation:flowBus    1.4s linear infinite; }
+    .flow-branch { stroke-dasharray:12 7;  animation:flowBranch 0.72s linear infinite; }
+    .warn-blink  { animation:warnBlink  0.72s ease-in-out infinite; }
+    .itm-flash   { animation:itmFlash   0.85s ease-out forwards; }
+    .fade-up     { animation:fadeUp     0.38s ease-out both; }
+    .modal-in    { animation:modalIn    0.32s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+    .arnico-glow { animation:arnicoGlow 3.5s ease-in-out infinite; }
+
+    /* ── GAUGE ───────────────────────────────────── */
+    .gauge-fill { transition:stroke-dashoffset .6s cubic-bezier(.4,0,.2,1), stroke .3s; }
+
+    /* ── MASTER SWITCH ───────────────────────────── */
+    .itm-sw       { position:relative; width:80px; height:40px; cursor:pointer; }
+    .itm-sw input { display:none; }
+    .itm-track {
+      position:absolute; inset:0; border-radius:20px;
+      background:linear-gradient(135deg,#1a0810,#1c0a0a);
+      border:1.5px solid rgba(255,95,109,.52);
+      transition:all .35s cubic-bezier(.4,0,.2,1);
+      box-shadow:inset 0 2px 5px rgba(0,0,0,.6);
+    }
+    .itm-knob {
+      position:absolute; top:4px; left:4px;
+      width:30px; height:30px; border-radius:50%;
+      background:radial-gradient(circle at 35% 35%,#ff8088,#ef4444);
+      box-shadow:0 0 11px #ef4444,0 0 24px rgba(239,68,68,.35);
+      transition:all .35s cubic-bezier(.68,-.55,.27,1.55);
+      display:flex; align-items:center; justify-content:center;
+      font-size:7.5px; font-weight:700; font-family:'Chakra Petch',sans-serif;
+      color:rgba(255,255,255,.88); letter-spacing:.05em; pointer-events:none;
+    }
+    .itm-sw input:checked ~ .itm-track {
+      background:linear-gradient(135deg,#00111f,#001a32);
+      border-color:rgba(30,200,255,.55);
+      box-shadow:inset 0 2px 5px rgba(0,0,0,.6),0 0 20px rgba(30,200,255,.22);
+    }
+    .itm-sw input:checked ~ .itm-knob {
+      left:46px;
+      background:radial-gradient(circle at 35% 35%,#8ee8ff,#1ec8ff);
+      box-shadow:0 0 12px #1ec8ff,0 0 28px rgba(30,200,255,.5);
+    }
+
+    /* ── CIRCUIT SWITCH ──────────────────────────── */
+    .circ-sw       { position:relative; width:54px; height:28px; cursor:pointer; }
+    .circ-sw input { display:none; }
+    .circ-track {
+      position:absolute; inset:0; border-radius:14px;
+      background:#0c1117; border:1px solid #20303f; transition:all .25s ease;
+    }
+    .circ-knob {
+      position:absolute; top:3px; left:3px;
+      width:22px; height:22px; border-radius:50%;
+      background:#2e4358; transition:all .25s cubic-bezier(.4,0,.2,1); pointer-events:none;
+    }
+    .circ-sw input:checked ~ .circ-track  { background:rgba(30,200,255,.1); border-color:rgba(30,200,255,.52); box-shadow:0 0 10px rgba(30,200,255,.2); }
+    .circ-sw input:checked ~ .circ-knob   { left:29px; background:#1ec8ff; box-shadow:0 0 9px rgba(30,200,255,.75); }
+    .circ-sw input:disabled ~ .circ-track { opacity:.42; cursor:not-allowed; }
+    .circ-sw input:disabled ~ .circ-knob  { opacity:.42; cursor:not-allowed; }
+
+    /* ── CARDS ───────────────────────────────────── */
+    .glass-header {
+      background:linear-gradient(180deg,rgba(255,255,255,0.052),rgba(255,255,255,0.014)),rgba(6,10,15,0.97);
+      border:1px solid rgba(255,255,255,0.062); backdrop-filter:blur(24px);
+    }
+    .circ-card {
+      background:linear-gradient(155deg,rgba(255,255,255,0.036),rgba(255,255,255,0.007)),rgba(7,12,19,0.96);
+      border:1px solid rgba(255,255,255,0.05); transition:border-color .3s,box-shadow .3s;
+    }
+    .circ-card.energized { border-color:rgba(30,200,255,.3); box-shadow:0 0 0 1px rgba(30,200,255,.1),0 0 22px rgba(30,200,255,.07); }
+    .circ-card.standby   { border-color:rgba(255,159,26,.22); }
+
+    /* ── CALC MODAL ──────────────────────────────── */
+    .modal-overlay {
+      position:fixed; inset:0; z-index:200;
+      background:rgba(2,5,10,0.88); backdrop-filter:blur(18px);
+      display:flex; align-items:flex-start; justify-content:center;
+      padding:12px; overflow-y:auto;
+    }
+    .modal-box {
+      width:100%; max-width:440px;
+      background:linear-gradient(160deg,rgba(18,28,42,0.99),rgba(8,14,24,0.99));
+      border:1px solid rgba(30,200,255,0.22);
+      border-radius:20px;
+      box-shadow:0 0 40px rgba(30,200,255,0.12),0 30px 60px rgba(0,0,0,0.7);
+      overflow:hidden; margin:auto;
+    }
+    .code-block {
+      background:rgba(2,6,12,0.9); border:1px solid rgba(30,200,255,0.15);
+      border-radius:8px; padding:10px 12px;
+      font-family:'Share Tech Mono',monospace;
+      font-size:10.5px; line-height:1.8; color:#7ee8ff;
+      white-space:pre;
+    }
+    .code-result {
+      color:#22d38b; font-family:'Share Tech Mono',monospace;
+      font-size:12px; font-weight:700;
+    }
+
+    /* ── IMAGE BLENDING ──────────────────────────── */
+    .logo-wrap {
+      background:rgba(255,255,255,0.92); border-radius:10px;
+      overflow:hidden; display:flex; align-items:center; justify-content:center;
+    }
+    .logo-img { mix-blend-mode:multiply; object-fit:contain; }
+    .firma-wrap {
+      background:rgba(255,255,255,0.9); border-radius:10px; padding:8px 14px;
+    }
+    .firma-img { mix-blend-mode:multiply; object-fit:contain; object-position:left; }
+
+    /* ── MISC ────────────────────────────────────── */
+    .prog-fill { transition:width .55s cubic-bezier(.4,0,.2,1),background .3s; }
+    ::-webkit-scrollbar          { width:3px; }
+    ::-webkit-scrollbar-track    { background:#03060a; }
+    ::-webkit-scrollbar-thumb    { background:rgba(30,200,255,.4); border-radius:2px; }
+  </style>
+</head>
+
+<body class="antialiased text-steel-100">
+<div id="root"></div>
+
+<script type="text/babel">
+/* @jsxRuntime classic */
+/* @jsx React.createElement */
+const { useState, useCallback, useMemo, useEffect } = React;
+
+/* ═══════════════════════════════════════════════════════
+   ELECTRICAL ENGINE — Ingeniería exacta
+   Base: Sistema trifásico 480 V · FP 0.9 · ITM 1200 A
+═══════════════════════════════════════════════════════ */
+const VOLTAGE    = 480;
+const FP         = 0.9;
+const ITM_RATING = 1200;
+const MAX_KW     = 628.5;   // 14 × 44.89 kW
+const KW_C       = 44.89;   // √3×480×60×0.9 per circuit
+const A_C        = 60;      // breaker rating per circuit
+const N          = 14;
+
+// NEC 80% continuous load rule: 1200 × 0.8 = 960 A
+const WARN_A     = 960;
+// ITM rating = gauge full scale
+const MAX_A_GAUGE = ITM_RATING;  // 1200 A
+// Max achievable in this simulation: 14×60 = 840 A
+const MAX_A_SIM   = N * A_C;    // 840 A
+
+// Q_max real = P_max/FP × sin(arccos(FP)) ≈ 304.4 kVAR
+const MAX_KVAR = 312;
+
+// ── Demanda de diseño (base de la memoria de cálculo) ──
+const FD         = 0.80;         // Factor de Demanda normativo
+const P_DEMAND   = MAX_KW * FD;  // 628.5 × 0.8 = 502.8 kW
+const S_DESIGN   = P_DEMAND / FP;               // 558.67 kVA
+const Q_DESIGN   = Math.sqrt(Math.max(0, S_DESIGN**2 - P_DEMAND**2)); // 243.52 kVAR
+
+const calc = (n) => {
+  const P = n * KW_C;
+  const S = P / FP;
+  const Q = Math.sqrt(Math.max(0, S * S - P * P));
+  const A = n * A_C;
+  return { P, S, Q, A };
+};
+
+/* ═══════════════════════════════════════════════════════
+   SVG LAYOUT
+═══════════════════════════════════════════════════════ */
+const SW = 390, SH = 296;
+const ITM_CX = SW / 2;
+const ITM_Y1 = 34, ITM_Y2 = 72;
+const BUS_Y  = 104;
+const BRK_Y  = BUS_Y + 31;
+const TERM_Y = 248;
+const LABEL_3P_Y = TERM_Y + 14;
+
+const BXS = Array.from({ length: N }, (_, i) =>
+  14 + i * ((SW - 28) / (N - 1))
+);
+
+/* ═══════════════════════════════════════════════════════
+   LIVE CLOCK
+═══════════════════════════════════════════════════════ */
+const Clock = () => {
+  const [t, setT] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span style={{ fontFamily:"'Share Tech Mono',monospace", color:'#355067', fontSize:9, letterSpacing:'0.06em' }}>
+      {t.toLocaleTimeString('es-MX',{ hour12:false })}
+    </span>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   CIRCULAR GAUGE  (decimals prop)
+═══════════════════════════════════════════════════════ */
+const Gauge = ({ value, max, label, unit, color='#1ec8ff', warn=false, size=82, decimals=0 }) => {
+  const r    = size * 0.36;
+  const circ = 2 * Math.PI * r;
+  const pct  = Math.min(value / max, 1);
+  const off  = circ * (1 - pct);
+  const c    = warn ? '#ff5f6d' : color;
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+      <div style={{ position:'relative', width:size, height:size }}>
+        <svg width={size} height={size} style={{ transform:'rotate(-90deg)', display:'block' }}>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.052)" strokeWidth={5.5}/>
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={c} strokeWidth={5.5}
+            strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={off}
+            className="gauge-fill" style={{ filter:`drop-shadow(0 0 5px ${c})` }}
+          />
+        </svg>
+        <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+          <span className={warn ? 'warn-blink' : ''} style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:13, fontWeight:700, lineHeight:1 }}>
+            {value.toFixed(decimals)}
+          </span>
+          <span style={{ color:'#557089', fontSize:7.5, letterSpacing:'0.04em' }}>{unit}</span>
+        </div>
+      </div>
+      <span style={{ color:'#87a0b3', fontSize:7.5, letterSpacing:'0.13em', textTransform:'uppercase', fontWeight:700 }}>{label}</span>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   LINEAR BAR METER
+═══════════════════════════════════════════════════════ */
+const BarMeter = ({ value, max, label, unit, color, warnAt, warnColor='#ff5f6d' }) => {
+  const pct  = Math.min(value / max * 100, 100);
+  const warn = value >= warnAt;
+  const c    = warn ? warnColor : color;
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:3 }}>
+        <span style={{ color:'#557089', fontSize:8.5, letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:700 }}>{label}</span>
+        <span className={warn ? 'warn-blink' : ''} style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:11, fontWeight:700 }}>
+          {value.toFixed(0)}<span style={{ fontSize:7.5, color:'#557089', marginLeft:2 }}>{unit}</span>
+        </span>
+      </div>
+      <div style={{ height:4, background:'rgba(255,255,255,0.042)', borderRadius:3, overflow:'hidden', border:'1px solid rgba(255,255,255,0.032)' }}>
+        <div className="prog-fill" style={{
+          height:'100%', width:`${pct}%`, borderRadius:3,
+          background: warn ? `linear-gradient(90deg,${color},${warnColor})` : `linear-gradient(90deg,${color}77,${color})`,
+          boxShadow:`0 0 8px ${c}55`
+        }}/>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   UNIFILAR SVG — with animated flow + 3P labels
+═══════════════════════════════════════════════════════ */
+const Unifilar = ({ masterOn, circuits, flashIdx }) => {
+  const activeN = circuits.filter(Boolean).length;
+  const mainC  = masterOn ? '#1ec8ff' : '#1c2e3d';
+  const mainGl = masterOn ? 'drop-shadow(0 0 5px #1ec8ff) drop-shadow(0 0 14px rgba(30,200,255,0.3))' : 'none';
+
+  return (
+    <div style={{ background:'linear-gradient(172deg,rgba(10,18,28,0.97),rgba(5,9,14,0.99))', borderRadius:16, border:'1px solid rgba(30,200,255,0.1)', overflow:'hidden', position:'relative' }}>
+      {/* dot-grid bg */}
+      <svg style={{ position:'absolute',inset:0,opacity:0.05,pointerEvents:'none' }} width="100%" height="100%">
+        <defs>
+          <pattern id="dotsG" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="12" cy="12" r="0.65" fill="#1ec8ff"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#dotsG)"/>
+      </svg>
+
+      <svg viewBox={`0 0 ${SW} ${SH}`} style={{ width:'100%',height:'auto',display:'block' }}>
+
+        {/* source */}
+        <text x={ITM_CX} y={13} textAnchor="middle" fill="#355067" fontSize={6.5} fontFamily="Share Tech Mono" letterSpacing="1">
+          3Φ · 480 V · FUENTE PRINCIPAL
+        </text>
+
+        {/* 3-phase incoming */}
+        {[-5,0,5].map((dx,i) => (
+          <line key={i} x1={ITM_CX+dx} y1={18} x2={ITM_CX+dx} y2={ITM_Y1}
+            stroke={mainC} strokeWidth={masterOn?1.7:1}
+            className={masterOn?'flow-main':''} style={{ filter:mainGl,transition:'stroke .35s' }}
+          />
+        ))}
+
+        {/* ITM box */}
+        <rect x={ITM_CX-46} y={ITM_Y1} width={92} height={38} rx={5} ry={5}
+          fill={masterOn?'rgba(30,200,255,0.09)':'rgba(22,10,10,0.65)'}
+          stroke={masterOn?'rgba(30,200,255,0.62)':'rgba(255,95,109,0.44)'}
+          strokeWidth={1.5}
+          style={{ filter:masterOn?'drop-shadow(0 0 9px rgba(30,200,255,0.28))':'drop-shadow(0 0 5px rgba(255,95,109,0.18))', transition:'all .4s' }}
+        />
+        <text x={ITM_CX} y={ITM_Y1+13} textAnchor="middle" fill={masterOn?'#88dcff':'#ff8088'} fontSize={7} fontFamily="Share Tech Mono" fontWeight="bold">ITM PRINCIPAL</text>
+        <text x={ITM_CX} y={ITM_Y1+24} textAnchor="middle" fill={masterOn?'#1ec8ff':'#ff5f6d'} fontSize={9} fontFamily="Share Tech Mono">1200 A</text>
+        <text x={ITM_CX} y={ITM_Y1+35} textAnchor="middle" fill={masterOn?'#22d38b':'#ff5f6d'} fontSize={5.5} fontFamily="Share Tech Mono">
+          {masterOn?'● CERRADO · ENERGIZADO':'○ ABIERTO · DESENERGIZADO'}
+        </text>
+
+        {/* drop ITM → bus */}
+        <line x1={ITM_CX} y1={ITM_Y2} x2={ITM_CX} y2={BUS_Y}
+          stroke={mainC} strokeWidth={masterOn?3:1.5}
+          className={masterOn?'flow-main':''} style={{ filter:mainGl,transition:'stroke .35s,stroke-width .35s' }}
+        />
+
+        {/* bus glow halo */}
+        {masterOn && <line x1={BXS[0]} y1={BUS_Y} x2={BXS[N-1]} y2={BUS_Y} stroke="#1ec8ff" strokeWidth={12} strokeOpacity={0.065}/>}
+
+        {/* main bus */}
+        <line x1={BXS[0]} y1={BUS_Y} x2={BXS[N-1]} y2={BUS_Y}
+          stroke={mainC} strokeWidth={masterOn?3:1.5}
+          className={masterOn?'flow-bus':''} style={{ filter:mainGl,transition:'stroke .35s' }}
+        />
+
+        {/* bus labels */}
+        <text x={BXS[0]} y={BUS_Y-6} fill="#2c4158" fontSize={5.5} fontFamily="Manrope">BUS Ω</text>
+        <text x={BXS[N-1]} y={BUS_Y-6} textAnchor="end" fill="#2c4158" fontSize={5.5} fontFamily="Manrope">480V</text>
+
+        {/* 14 branch circuits */}
+        {BXS.map((bx, i) => {
+          const on    = masterOn && circuits[i];
+          const bc    = on ? '#1ec8ff' : '#1c2e3d';
+          const bg    = on ? 'drop-shadow(0 0 3px #1ec8ff)' : 'none';
+          const flash = flashIdx === i;
+          return (
+            <g key={i}>
+              {/* stub bus → breaker */}
+              <line x1={bx} y1={BUS_Y} x2={bx} y2={BRK_Y-6}
+                stroke={bc} strokeWidth={on?1.8:1}
+                className={on?'flow-branch':''} style={{ filter:bg,transition:'stroke .3s,filter .3s' }}
+              />
+              {/* breaker diamond */}
+              <rect x={bx-4.5} y={BRK_Y-4.5} width={9} height={9} rx={1.5}
+                fill={on?'rgba(30,200,255,0.22)':'rgba(12,18,26,0.85)'}
+                stroke={on?'#1ec8ff':'#2c4158'} strokeWidth={1.2}
+                transform={`rotate(45,${bx},${BRK_Y})`}
+                style={{ filter:on?'drop-shadow(0 0 4px #1ec8ff)':'none',transition:'all .3s' }}
+              />
+              {/* breaker → terminal */}
+              <line x1={bx} y1={BRK_Y+7} x2={bx} y2={TERM_Y-5}
+                stroke={bc} strokeWidth={on?1.8:1}
+                className={on?'flow-branch':''} style={{ filter:bg,transition:'stroke .3s' }}
+              />
+              {/* terminal ring */}
+              <circle cx={bx} cy={TERM_Y} r={on?5.5:3.5}
+                fill={on?'rgba(30,200,255,0.16)':'transparent'}
+                stroke={on?'#1ec8ff':'#1c2e3d'} strokeWidth={1.5}
+                style={{ filter:on?'drop-shadow(0 0 5px #1ec8ff)':'none',transition:'all .35s' }}
+              />
+              {on && <circle cx={bx} cy={TERM_Y} r={2} fill="#1ec8ff"/>}
+              {/* flash sparkle */}
+              {flash && <circle cx={bx} cy={TERM_Y} r={3} fill="none" stroke="#1ec8ff" strokeWidth={1.5} opacity={0} style={{ animation:'warnBlink 0.5s ease-out forwards' }}/>}
+              {/* ── 3P label (new requirement) ── */}
+              <text x={bx} y={LABEL_3P_Y} textAnchor="middle"
+                fill={on ? '#5ecfee' : '#2c4158'} fontSize={5} fontFamily="Share Tech Mono"
+                style={{ transition:'fill .3s' }}>
+                3P
+              </text>
+              {/* circuit number */}
+              <text x={bx} y={LABEL_3P_Y+8} textAnchor="middle"
+                fill={on?'#3a7a94':'#1e3040'} fontSize={4.5} fontFamily="Share Tech Mono">
+                {String(i+1).padStart(2,'0')}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* footer label — EQUIPOS (42 POLOS) */}
+        <text x={SW/2} y={SH-4} textAnchor="middle" fill="#2c4158" fontSize={6.5} fontFamily="Share Tech Mono">
+          {masterOn
+            ? `${activeN} / ${N} EQUIPOS (42 POLOS) ENERGIZADOS`
+            : 'TABLERO DESENERGIZADO — FLUJO INTERRUMPIDO'}
+        </text>
+      </svg>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   CIRCUIT CARD
+═══════════════════════════════════════════════════════ */
+const CircuitCard = ({ index, isOn, masterOn, onToggle }) => {
+  const energized = masterOn && isOn;
+  const standby   = !masterOn && isOn;
+  return (
+    <div className={`circ-card rounded-[18px] p-3 ${energized?'energized':standby?'standby':''}`}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:7 }}>
+        <div>
+          <div style={{ color:energized?'#5ecfee':'#557089', fontSize:8.5, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', transition:'color .3s' }}>
+            Toma Trifásico
+          </div>
+          <div style={{ color:energized?'#e4f6ff':'#87a0b3', fontSize:20, fontWeight:700, lineHeight:1.1, fontFamily:"'Share Tech Mono',monospace", transition:'color .3s' }}>
+            #{String(index+1).padStart(2,'0')}
+          </div>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+          <div style={{ width:9, height:9, borderRadius:'50%',
+            background:energized?'#22d38b':(standby?'#ff9f1a':'#1c2e3d'),
+            boxShadow:energized?'0 0 0 2px rgba(34,211,139,0.2),0 0 10px #22d38b':(standby?'0 0 8px #ff9f1a':'none'),
+            transition:'all .35s'
+          }}/>
+          <span style={{ color:'#2c4158', fontSize:6, fontFamily:"'Share Tech Mono',monospace" }}>3P</span>
+        </div>
+      </div>
+      <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:energized?'rgba(30,200,255,0.07)':'rgba(255,255,255,0.03)', border:`1px solid ${energized?'rgba(30,200,255,0.25)':'rgba(255,255,255,0.055)'}`, borderRadius:6, padding:'2px 8px', marginBottom:8, transition:'all .3s' }}>
+        <span style={{ color:'#ff9f1a', fontSize:8.5, fontFamily:"'Share Tech Mono',monospace", fontWeight:700 }}>{A_C}A</span>
+        <span style={{ color:'#2c4158', fontSize:8.5 }}>|</span>
+        <span style={{ color:'#1ec8ff', fontSize:8.5, fontFamily:"'Share Tech Mono',monospace", fontWeight:700 }}>{VOLTAGE}V</span>
+        <span style={{ color:'#2c4158', fontSize:8.5 }}>|</span>
+        <span style={{ color:'#a855f7', fontSize:8.5, fontFamily:"'Share Tech Mono',monospace", fontWeight:700 }}>3P</span>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:4, marginBottom:10 }}>
+        {[
+          { lbl:'A',  val:energized?String(A_C):'0',        c:energized?'#ff9f1a':'#2c4158' },
+          { lbl:'kW', val:energized?KW_C.toFixed(2):'0.00', c:energized?'#22d38b':'#2c4158' }
+        ].map(({ lbl, val, c }) => (
+          <div key={lbl} style={{ background:'rgba(4,7,12,0.78)', borderRadius:6, padding:'4px 6px', textAlign:'center' }}>
+            <div style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:13, transition:'color .3s' }}>{val}</div>
+            <div style={{ color:'#2c4158', fontSize:6.5, textTransform:'uppercase', letterSpacing:'0.08em', marginTop:1 }}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span style={{ color:energized?'#22d38b':(standby?'#ff9f1a':(!masterOn?'#2c4158':'#ff5f6d')), fontSize:8.5, fontWeight:700, letterSpacing:'0.12em', textTransform:'uppercase', transition:'color .3s' }}>
+          {!masterOn?'SIN TENSIÓN':isOn?'ACTIVO':'INACTIVO'}
+        </span>
+        <label className="circ-sw">
+          <input type="checkbox" checked={isOn} disabled={!masterOn} onChange={() => onToggle(index)}/>
+          <span className="circ-track"/>
+          <span className="circ-knob"/>
+        </label>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   CALC MODAL — Memoria de Cálculo
+═══════════════════════════════════════════════════════ */
+const CalcModal = ({ onClose }) => {
+  const [showFormulas, setShowFormulas] = useState(false);
+
+  const steps = [
+    {
+      num:'01', title:'POTENCIA INSTALADA', result:'628.5 kW',
+      subtitle:'Escenario máximo · 100% simultaneidad',
+      badge:'#1ec8ff',
+      formula:
+`P = √3 × V × I × FP × n
+P = 1.732 × 480 V × 60 A × 0.9 × 14
+
+Paso 1 → P unitaria:
+  1.732 × 480 × 60 × 0.9 = 44.89 kW/equipo
+
+Paso 2 → P total:
+  44.89 kW × 14 equipos = 628.46 ≈ 628.5 kW`,
+      conclusion:'Capacidad instalada total del tablero.'
+    },
+    {
+      num:'02', title:'DEMANDA ACTIVA  P', result:'502.8 kW',
+      subtitle:'Potencia de trabajo real (FD = 0.80)',
+      badge:'#22d38b',
+      formula:
+`P_dem = P_instalada × FD
+
+Donde:
+  FD = 0.80  (Factor de Demanda normativo NEC)
+
+Cálculo:
+  P_dem = 628.5 kW × 0.80 = 502.8 kW`,
+      conclusion:'Potencia activa de diseño del transformador.'
+    },
+    {
+      num:'03', title:'POTENCIA APARENTE  S', result:'558.67 kVA',
+      subtitle:'Tamaño del transformador CFE',
+      badge:'#a855f7',
+      formula:
+`S = P_dem / FP
+
+Donde:
+  FP = 0.90  (Factor de Potencia del sistema)
+
+Cálculo:
+  S = 502.8 kW / 0.9 = 558.67 kVA`,
+      conclusion:'kVA que debe suministrar el transformador.'
+    },
+    {
+      num:'04', title:'POTENCIA REACTIVA  Q', result:'243.52 kVAR',
+      subtitle:'Carga inductiva de motores (Pitágoras)',
+      badge:'#ff9f1a',
+      formula:
+`Q = √(S² - P²)   [Teorema de Pitágoras Eléctrico]
+
+Valores:
+  S = 558.67 kVA  →  S² = 312,152.37
+  P = 502.80 kW   →  P² = 252,807.84
+
+Cálculo:
+  Q = √(312,152.37 - 252,807.84)
+  Q = √59,344.53
+  Q = 243.52 kVAR`,
+      conclusion:'Potencia reactiva compensable con banco de capacitores.'
+    }
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={(e) => { if(e.target===e.currentTarget) onClose(); }}>
+      <div className="modal-box modal-in">
+
+        {/* header */}
+        <div style={{ padding:'16px 18px 14px', borderBottom:'1px solid rgba(30,200,255,0.14)', display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:10 }}>
+          <div>
+            <div style={{ color:'#1ec8ff', fontSize:8, letterSpacing:'0.2em', textTransform:'uppercase', fontWeight:700, fontFamily:'Manrope' }}>
+              Arnico / Integr Ingeniería
+            </div>
+            <div style={{ color:'#e4f0ff', fontSize:16, fontWeight:800, fontFamily:"'Chakra Petch',sans-serif", lineHeight:1.2, marginTop:3 }}>
+              AVANCE DE LA<br/>MEMORIA DE CÁLCULO
+            </div>
+            <div style={{ color:'#355067', fontSize:9, fontFamily:"'Share Tech Mono',monospace", marginTop:4 }}>
+              Sistema 3Φ · 480V · FP 0.9 · 14 equipos · 42 polos
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,95,109,0.1)', border:'1px solid rgba(255,95,109,0.35)', borderRadius:8, padding:'6px 10px', color:'#ff5f6d', fontSize:10, fontWeight:700, cursor:'pointer', letterSpacing:'0.08em', flexShrink:0, marginTop:2 }}>
+            ✕ CERRAR
+          </button>
+        </div>
+
+        {/* body */}
+        <div style={{ padding:'14px 16px', overflowY:'auto', maxHeight:'75vh' }}>
+
+          {/* ¿De dónde salen? accordion trigger */}
+          <button onClick={() => setShowFormulas(!showFormulas)} style={{
+            width:'100%', marginBottom:14,
+            background: showFormulas
+              ? 'linear-gradient(135deg,rgba(30,200,255,0.14),rgba(30,200,255,0.06))'
+              : 'rgba(30,200,255,0.07)',
+            border:'1.5px solid rgba(30,200,255,0.3)',
+            borderRadius:12, padding:'11px 14px',
+            color:'#1ec8ff', fontSize:11, fontWeight:700, cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            letterSpacing:'0.05em', fontFamily:"'Chakra Petch',sans-serif",
+            transition:'all .25s'
+          }}>
+            <span>⚡ ¿De dónde salen estos números?</span>
+            <span style={{ fontSize:13, transition:'transform .25s', transform: showFormulas ? 'rotate(90deg)' : 'rotate(0deg)' }}>›</span>
+          </button>
+
+          {/* Formulas accordion body */}
+          {showFormulas && (
+            <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:14 }}>
+              {steps.map(({ num, title, result, subtitle, badge, formula, conclusion }) => (
+                <div key={num} style={{ background:'rgba(5,10,18,0.8)', border:`1px solid ${badge}30`, borderRadius:12, overflow:'hidden' }}>
+                  {/* step header */}
+                  <div style={{ background:`${badge}14`, borderBottom:`1px solid ${badge}22`, padding:'9px 12px', display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ width:24, height:24, borderRadius:'50%', background:`${badge}22`, border:`1.5px solid ${badge}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <span style={{ fontFamily:"'Share Tech Mono',monospace", color:badge, fontSize:9, fontWeight:700 }}>{num}</span>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ color:badge, fontSize:10, fontWeight:700, letterSpacing:'0.08em', fontFamily:"'Chakra Petch',sans-serif" }}>{title}</div>
+                      <div style={{ color:'#557089', fontSize:8, marginTop:1 }}>{subtitle}</div>
+                    </div>
+                    <span className="code-result">{result}</span>
+                  </div>
+                  {/* formula block */}
+                  <div style={{ padding:'10px 12px' }}>
+                    <pre className="code-block">{formula}</pre>
+                    <div style={{ marginTop:8, padding:'6px 10px', background:`${badge}0d`, borderRadius:6, border:`1px solid ${badge}20`, display:'flex', alignItems:'center', gap:7 }}>
+                      <span style={{ color:badge, fontSize:12 }}>→</span>
+                      <span style={{ color:'#87a0b3', fontSize:9, lineHeight:1.4 }}>{conclusion}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Triangle summary */}
+              <div style={{ background:'rgba(5,10,18,0.9)', border:'1px solid rgba(168,85,247,0.25)', borderRadius:12, padding:'12px 14px' }}>
+                <div style={{ color:'#a855f7', fontSize:10, fontWeight:700, letterSpacing:'0.1em', fontFamily:"'Chakra Petch',sans-serif", marginBottom:8 }}>
+                  ▲ TRIÁNGULO DE POTENCIAS — RESUMEN
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                  {[
+                    { lbl:'P Instalada', val:'628.5 kW',   c:'#1ec8ff' },
+                    { lbl:'P Demanda',   val:'502.8 kW',   c:'#22d38b' },
+                    { lbl:'S Aparente',  val:'558.67 kVA', c:'#a855f7' },
+                    { lbl:'Q Reactiva',  val:'243.52 kVAR',c:'#ff9f1a' },
+                    { lbl:'FD Diseño',   val:'0.80',        c:'#87a0b3' },
+                    { lbl:'FP Sistema',  val:'0.90',        c:'#87a0b3' }
+                  ].map(({ lbl, val, c }) => (
+                    <div key={lbl} style={{ background:'rgba(255,255,255,0.04)', borderRadius:7, padding:'6px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ color:'#355067', fontSize:8, textTransform:'uppercase', letterSpacing:'0.08em' }}>{lbl}</span>
+                      <span style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:11, fontWeight:700 }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* live values snapshot */}
+          <div style={{ background:'rgba(30,200,255,0.05)', border:'1px solid rgba(30,200,255,0.15)', borderRadius:12, padding:'11px 13px' }}>
+            <div style={{ color:'#1ec8ff', fontSize:8.5, letterSpacing:'0.12em', textTransform:'uppercase', fontWeight:700, marginBottom:8 }}>
+              NOTA TÉCNICA
+            </div>
+            <p style={{ color:'#87a0b3', fontSize:10, lineHeight:1.65 }}>
+              Los valores del simulador muestran la carga <strong style={{color:'#e4f0ff'}}>en tiempo real</strong> según los equipos encendidos.
+              La memoria de cálculo es la <strong style={{color:'#e4f0ff'}}>base de diseño estática</strong> del tablero, usando
+              Factor de Demanda 0.80 como exige la normativa.
+              El ITM 1200A está protegido al <strong style={{color:'#22d38b'}}>80% continuo = 960 A</strong>.
+            </p>
+          </div>
+
+        </div>
+
+        {/* footer */}
+        <div style={{ padding:'10px 16px 14px', borderTop:'1px solid rgba(255,255,255,0.06)', textAlign:'center' }}>
+          <div style={{ color:'#2c4158', fontSize:8, fontFamily:"'Share Tech Mono',monospace", letterSpacing:'0.1em' }}>
+            ARNICO / INTEGR INGENIERÍA · MEMORIA DE CÁLCULO UVIE · v2.0
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   APP
+═══════════════════════════════════════════════════════ */
+const App = () => {
+  const [masterOn, setMasterOn] = useState(false);
+  const [circuits, setCircuits] = useState(Array(N).fill(false));
+  const [itmAnim,  setItmAnim]  = useState(false);
+  const [flashIdx, setFlashIdx] = useState(null);
+  const [showCalc, setShowCalc] = useState(false);
+
+  const activeN = useMemo(() => masterOn ? circuits.filter(Boolean).length : 0, [masterOn, circuits]);
+  const { P, S, Q, A } = useMemo(() => calc(activeN), [activeN]);
+
+  const handleMaster = useCallback(() => {
+    setMasterOn(prev => {
+      if (prev) { setCircuits(Array(N).fill(false)); }
+      else { setItmAnim(true); setTimeout(() => setItmAnim(false), 900); }
+      return !prev;
+    });
+  }, []);
+
+  const handleCircuit = useCallback((i) => {
+    setCircuits(prev => prev.map((v, idx) => idx === i ? !v : v));
+    setFlashIdx(i);
+    setTimeout(() => setFlashIdx(null), 550);
+  }, []);
+
+  const allOn  = useCallback(() => { if (masterOn) setCircuits(Array(N).fill(true)); }, [masterOn]);
+  const allOff = useCallback(() => setCircuits(Array(N).fill(false)), []);
+
+  const isWarn  = A >= WARN_A && masterOn;
+  const loadPct = P / MAX_KW * 100;
+
+  return (
+    <div style={{ minHeight:'100vh', position:'relative', zIndex:1 }}>
+      {showCalc && <CalcModal onClose={() => setShowCalc(false)}/>}
+
+      <div style={{ maxWidth:440, margin:'0 auto', minHeight:'100vh', background:'linear-gradient(180deg,rgba(4,7,12,0.99),rgba(8,13,20,0.99))', boxShadow:'0 30px 90px -36px rgba(0,0,0,0.85),0 18px 42px -28px rgba(30,200,255,0.14)' }}>
+
+        {/* ════════════════════════════════════════
+            STICKY HEADER
+        ════════════════════════════════════════ */}
+        <div className="glass-header" style={{ position:'sticky',top:0,zIndex:50, padding:'12px 15px 14px', borderLeft:'none',borderRight:'none',borderTop:'none', borderBottomLeftRadius:22,borderBottomRightRadius:22, borderBottom:'1px solid rgba(30,200,255,0.1)' }}>
+
+          {/* ── BRANDING PRINCIPAL "ARNICO" ── */}
+          <div style={{ display:'flex', alignItems:'center', gap:11, marginBottom:10 }}>
+            {/* Logo chip */}
+            <div className="logo-wrap" style={{ width:46, height:46, flexShrink:0 }}>
+              <img src="logo_cropped.png" alt="INTEGR" className="logo-img" style={{ width:'90%', height:'90%' }}/>
+            </div>
+
+            <div style={{ flex:1, minWidth:0 }}>
+              {/* ARNICO — focal visual principal */}
+              <div className="arnico-glow" style={{
+                fontFamily:"'Chakra Petch',sans-serif", fontStyle:'italic',
+                fontSize:26, fontWeight:700, lineHeight:1, letterSpacing:'0.02em',
+                color:'#ffffff',
+                textShadow:'0 0 18px rgba(30,200,255,0.5),0 0 36px rgba(30,200,255,0.2)'
+              }}>
+                ARNICO
+              </div>
+              <div style={{ color:'#1ec8ff', fontSize:7.5, letterSpacing:'0.2em', fontWeight:700, textTransform:'uppercase', fontFamily:'Manrope', marginTop:1 }}>
+                Integr Ingeniería · Simulador de Tablero
+              </div>
+            </div>
+
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
+              <Clock/>
+              <div style={{
+                background:masterOn?'rgba(34,211,139,0.12)':'rgba(255,95,109,0.1)',
+                border:`1px solid ${masterOn?'rgba(34,211,139,0.36)':'rgba(255,95,109,0.32)'}`,
+                borderRadius:20, padding:'2px 8px', transition:'all .35s'
+              }}>
+                <span style={{ color:masterOn?'#22d38b':'#ff5f6d', fontSize:7.5, fontWeight:700, letterSpacing:'0.1em', fontFamily:"'Share Tech Mono',monospace" }}>
+                  {masterOn?'ONLINE':'OFFLINE'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* divider */}
+          <div style={{ height:1, marginBottom:11, background:'linear-gradient(90deg,transparent,rgba(30,200,255,0.22),transparent)' }}/>
+
+          {/* ITM master switch */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:12, marginBottom:12,
+            background:masterOn?'linear-gradient(135deg,rgba(30,200,255,0.07),rgba(30,200,255,0.03))':'linear-gradient(135deg,rgba(255,95,109,0.07),rgba(255,95,109,0.02))',
+            border:`1.5px solid ${masterOn?'rgba(30,200,255,0.28)':'rgba(255,95,109,0.28)'}`,
+            borderRadius:14, padding:'10px 14px', transition:'all .4s',
+            boxShadow:masterOn?'0 0 22px rgba(30,200,255,0.06)':'none'
+          }}>
+            <div style={{ flex:1 }}>
+              <div style={{ color:'#557089', fontSize:7.5, letterSpacing:'0.18em', textTransform:'uppercase', fontWeight:700, marginBottom:2 }}>
+                Interruptor Principal
+              </div>
+              <div style={{ color:masterOn?'#1ec8ff':'#ff5f6d', fontSize:15, fontWeight:700, letterSpacing:'0.04em', fontFamily:"'Chakra Petch',sans-serif", lineHeight:1.25, transition:'color .35s' }}>
+                ITM PRINCIPAL — 1200A
+              </div>
+              <div style={{ color:'#2c4158', fontSize:8.5, fontFamily:"'Share Tech Mono',monospace", letterSpacing:'0.04em' }}>
+                3Φ · {VOLTAGE}V · FP {FP} · Lím. {WARN_A}A (80% ITM)
+              </div>
+            </div>
+            <label className="itm-sw">
+              <input type="checkbox" checked={masterOn} onChange={handleMaster}/>
+              <span className={`itm-track ${itmAnim?'itm-flash':''}`}/>
+              <span className="itm-knob">{masterOn?'ON':'OFF'}</span>
+            </label>
+          </div>
+
+          {/* circular gauges: P (1 decimal) | A (0) | Q (1 decimal) */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:5, marginBottom:10 }}>
+            <Gauge value={P} max={MAX_KW}       label="Activa"    unit="kW"   color="#1ec8ff" size={80} decimals={1}/>
+            <Gauge value={A} max={MAX_A_GAUGE}  label="Corriente" unit="A"    color="#ff9f1a" warn={isWarn} size={80} decimals={0}/>
+            <Gauge value={Q} max={MAX_KVAR}     label="Reactiva"  unit="kVAR" color="#a855f7" size={80} decimals={1}/>
+          </div>
+
+          {/* bar meters */}
+          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+            <BarMeter value={P} max={MAX_KW}     label="Carga Activa" unit="kW" color="#1ec8ff" warnAt={MAX_KW*0.85} warnColor="#ff9f1a"/>
+            <BarMeter value={A} max={MAX_A_SIM}  label="Amperaje"     unit="A"  color="#ff9f1a" warnAt={WARN_A}      warnColor="#ff5f6d"/>
+          </div>
+
+          {/* extra telemetry: S | Equipos (42P) | %Carga */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:5, marginTop:9 }}>
+            {[
+              { lbl:'S (kVA)',        val:S.toFixed(1),             c:'#a855f7' },
+              { lbl:'Equipos (42P)',  val:`${activeN}/${N}`,        c:'#22d38b' },
+              { lbl:'% Carga',        val:`${loadPct.toFixed(1)}%`, c:loadPct>85?'#ff5f6d':'#1ec8ff' }
+            ].map(({ lbl, val, c }) => (
+              <div key={lbl} style={{ background:'rgba(4,7,12,0.82)', border:'1px solid rgba(255,255,255,0.042)', borderRadius:8, padding:'5px 8px', textAlign:'center' }}>
+                <div style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:12, fontWeight:700 }}>{val}</div>
+                <div style={{ color:'#2c4158', fontSize:6.5, textTransform:'uppercase', letterSpacing:'0.08em', marginTop:1 }}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* P/Q breakdown */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:5, marginTop:5 }}>
+            {[
+              { lbl:'P (kW)',   val:P.toFixed(2), c:'#1ec8ff' },
+              { lbl:'Q (kVAR)', val:Q.toFixed(2), c:'#a855f7' }
+            ].map(({ lbl, val, c }) => (
+              <div key={lbl} style={{ background:'rgba(4,7,12,0.82)', border:'1px solid rgba(255,255,255,0.032)', borderRadius:8, padding:'4px 8px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <span style={{ color:'#2c4158', fontSize:7.5, textTransform:'uppercase', letterSpacing:'0.08em' }}>{lbl}</span>
+                <span style={{ fontFamily:"'Share Tech Mono',monospace", color:c, fontSize:11, fontWeight:700 }}>{val}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* warning banner — only triggers at 960A (not reachable in sim, shows system is safe) */}
+          {isWarn && (
+            <div className="warn-blink fade-up" style={{ marginTop:8, background:'rgba(255,95,109,0.07)', border:'1px solid rgba(255,95,109,0.38)', borderRadius:9, padding:'7px 11px', display:'flex', alignItems:'center', gap:7 }}>
+              <span style={{ color:'#ff5f6d', fontSize:16 }}>⚡</span>
+              <span style={{ color:'#ff8a93', fontSize:9.5, fontWeight:700, letterSpacing:'0.06em' }}>
+                ALERTA NEC 80% · {A} A supera límite continuo de {WARN_A} A
+              </span>
+            </div>
+          )}
+        </div>
+        {/* /header */}
+
+        {/* ════════════════════════════════════════
+            SCROLLABLE BODY
+        ════════════════════════════════════════ */}
+        <div style={{ padding:'15px 13px 32px' }}>
+
+          {/* Unifilar section */}
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:9 }}>
+            <div style={{ width:3, height:18, borderRadius:2, background:'#1ec8ff', boxShadow:'0 0 8px #1ec8ff' }}/>
+            <span style={{ color:'#87a0b3', fontSize:9, letterSpacing:'0.16em', textTransform:'uppercase', fontWeight:700 }}>
+              Diagrama Unifilar Animado
+            </span>
+          </div>
+          <Unifilar masterOn={masterOn} circuits={circuits} flashIdx={flashIdx}/>
+
+          {/* ── BOTÓN: AVANCE DE LA MEMORIA DE CÁLCULO ── */}
+          <button onClick={() => setShowCalc(true)} style={{
+            width:'100%', marginTop:14, marginBottom:2,
+            padding:'14px 18px',
+            background:'linear-gradient(135deg,rgba(30,200,255,0.1),rgba(168,85,247,0.08))',
+            border:'1.5px solid rgba(30,200,255,0.35)',
+            borderRadius:14, cursor:'pointer',
+            display:'flex', alignItems:'center', justifyContent:'space-between', gap:10,
+            transition:'all .25s'
+          }}>
+            <div style={{ textAlign:'left' }}>
+              <div style={{ color:'#1ec8ff', fontSize:12, fontWeight:700, letterSpacing:'0.06em', fontFamily:"'Chakra Petch',sans-serif" }}>
+                ⚡ AVANCE DE LA MEMORIA DE CÁLCULO
+              </div>
+              <div style={{ color:'#557089', fontSize:8.5, marginTop:2 }}>
+                Bases de diseño · Fórmulas exactas · Triángulo de potencias
+              </div>
+            </div>
+            <div style={{ width:28, height:28, borderRadius:'50%', background:'rgba(30,200,255,0.12)', border:'1px solid rgba(30,200,255,0.4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <span style={{ color:'#1ec8ff', fontSize:14, fontWeight:700 }}>›</span>
+            </div>
+          </button>
+
+          {/* Bus de distribución section */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:20, marginBottom:9 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <div style={{ width:3, height:18, borderRadius:2, background:'#ff9f1a', boxShadow:'0 0 8px #ff9f1a' }}/>
+              <span style={{ color:'#87a0b3', fontSize:9, letterSpacing:'0.14em', textTransform:'uppercase', fontWeight:700 }}>
+                Bus de Distribución · 14 Equipos · 42 Polos
+              </span>
+            </div>
+            {masterOn && (
+              <div style={{ display:'flex', gap:5 }}>
+                {[
+                  { lbl:'TODO ●', fn:allOn,  c:'#1ec8ff', bg:'rgba(30,200,255,0.1)', bc:'rgba(30,200,255,0.36)' },
+                  { lbl:'TODO ○', fn:allOff, c:'#ff5f6d', bg:'rgba(255,95,109,0.1)', bc:'rgba(255,95,109,0.36)' }
+                ].map(({ lbl, fn, c, bg, bc }) => (
+                  <button key={lbl} onClick={fn} style={{ background:bg,border:`1px solid ${bc}`,color:c, borderRadius:6,padding:'3px 8px',fontSize:8,fontWeight:700,letterSpacing:'0.08em',cursor:'pointer',fontFamily:'Manrope',textTransform:'uppercase' }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* circuit cards */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
+            {circuits.map((isOn, i) => (
+              <CircuitCard key={i} index={i} isOn={isOn} masterOn={masterOn} onToggle={handleCircuit}/>
+            ))}
+          </div>
+
+          {/* ════ FOOTER / SELLO ════ */}
+          <div style={{ marginTop:24, borderRadius:18, border:'1px solid rgba(255,255,255,0.055)', background:'rgba(255,255,255,0.016)', padding:14 }}>
+
+            {/* logo + nombre empresa */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:12 }}>
+              <div>
+                <div style={{ color:'#557089', fontSize:7.5, letterSpacing:'0.16em', textTransform:'uppercase' }}>Sello Técnico</div>
+                <div style={{ color:'#d6e4f0', fontSize:14, fontWeight:700, fontFamily:"'Chakra Petch',sans-serif", marginTop:2 }}>
+                  INTEGR Ingeniería y Tecnología
+                </div>
+                <div style={{ color:'#87a0b3', fontSize:9, marginTop:3 }}>
+                  Simulador Industrial · Sistema 3Φ 480V · v2.0
+                </div>
+              </div>
+              <div className="logo-wrap" style={{ width:40, height:40, flexShrink:0 }}>
+                <img src="logo_cropped.png" alt="Logo INTEGR" className="logo-img" style={{ width:'90%', height:'90%' }}/>
+              </div>
+            </div>
+
+            {/* Elaborado por */}
+            <div style={{ background:'rgba(30,200,255,0.05)', border:'1px solid rgba(30,200,255,0.12)', borderRadius:10, padding:'8px 12px', marginBottom:12 }}>
+              <div style={{ color:'#355067', fontSize:7.5, textTransform:'uppercase', letterSpacing:'0.18em', marginBottom:4 }}>
+                Elaborado por
+              </div>
+              <div style={{ color:'#87a0b3', fontSize:11, fontWeight:700, fontFamily:"'Chakra Petch',sans-serif", letterSpacing:'0.05em' }}>
+                SAÚL VILLALOBOS / SIXTO GALLEGOS
+              </div>
+              <div style={{ color:'#2c4158', fontSize:8.5, fontFamily:"'Share Tech Mono',monospace", marginTop:3 }}>
+                UVIE · Unidad de Verificación e Ingeniería Eléctrica
+              </div>
+            </div>
+
+            {/* Firma — CSS blend para fusionar con dark mode */}
+            <div style={{ marginBottom:10 }}>
+              <div style={{ color:'#2c4158', fontSize:7.5, textTransform:'uppercase', letterSpacing:'0.16em', marginBottom:5 }}>
+                Firma autorizada
+              </div>
+              <div className="firma-wrap">
+                <img
+                  src="firmasaul.png"
+                  alt="Firma Saúl Villalobos"
+                  className="firma-img"
+                  style={{ height:56, width:'100%' }}
+                />
+              </div>
+            </div>
+
+            {/* spec strip */}
+            <div style={{ padding:'6px 10px', background:'rgba(4,7,12,0.75)', borderRadius:8, border:'1px solid rgba(255,255,255,0.032)', display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:4 }}>
+              {[`3Φ ${VOLTAGE}V`, `ITM ${ITM_RATING}A`, `${N}×${A_C}A`, `FP ${FP}`, `${MAX_KW} kW`, `Lím. ${WARN_A}A`].map(v => (
+                <span key={v} style={{ fontFamily:"'Share Tech Mono',monospace", color:'#2c4158', fontSize:7.5, letterSpacing:'0.06em' }}>{v}</span>
+              ))}
+            </div>
+          </div>
+
+        </div>
+        {/* /scrollable */}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
