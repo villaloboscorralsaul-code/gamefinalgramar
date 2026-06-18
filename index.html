@@ -515,7 +515,8 @@ const CircuitCard = ({ index, isOn, masterOn, onToggle }) => {
    CALC MODAL — Memoria de Cálculo
 ═══════════════════════════════════════════════════════ */
 const CalcModal = ({ onClose }) => {
-  const [showFormulas, setShowFormulas] = useState(false);
+  const [openSteps, setOpenSteps] = useState({});
+  const toggleStep = (num) => setOpenSteps(prev => ({ ...prev, [num]: !prev[num] }));
 
   const steps = [
     {
@@ -605,30 +606,14 @@ Cálculo:
         {/* body */}
         <div style={{ padding:'14px 16px', overflowY:'auto', maxHeight:'75vh' }}>
 
-          {/* ¿De dónde salen? accordion trigger */}
-          <button onClick={() => setShowFormulas(!showFormulas)} style={{
-            width:'100%', marginBottom:14,
-            background: showFormulas
-              ? 'linear-gradient(135deg,rgba(30,200,255,0.14),rgba(30,200,255,0.06))'
-              : 'rgba(30,200,255,0.07)',
-            border:'1.5px solid rgba(30,200,255,0.3)',
-            borderRadius:12, padding:'11px 14px',
-            color:'#1ec8ff', fontSize:11, fontWeight:700, cursor:'pointer',
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            letterSpacing:'0.05em', fontFamily:"'Chakra Petch',sans-serif",
-            transition:'all .25s'
-          }}>
-            <span>⚡ ¿De dónde salen estos números?</span>
-            <span style={{ fontSize:13, transition:'transform .25s', transform: showFormulas ? 'rotate(90deg)' : 'rotate(0deg)' }}>›</span>
-          </button>
-
-          {/* Formulas accordion body */}
-          {showFormulas && (
-            <div className="fade-up" style={{ display:'flex', flexDirection:'column', gap:14, marginBottom:14 }}>
-              {steps.map(({ num, title, result, subtitle, badge, formula, conclusion }) => (
-                <div key={num} style={{ background:'rgba(5,10,18,0.8)', border:`1px solid ${badge}30`, borderRadius:12, overflow:'hidden' }}>
-                  {/* step header */}
-                  <div style={{ background:`${badge}14`, borderBottom:`1px solid ${badge}22`, padding:'9px 12px', display:'flex', alignItems:'center', gap:10 }}>
+          {/* Per-step accordion cards */}
+          <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:14 }}>
+            {steps.map(({ num, title, result, subtitle, badge, formula, conclusion }) => {
+              const open = !!openSteps[num];
+              return (
+                <div key={num} style={{ background:'rgba(5,10,18,0.8)', border:`1px solid ${badge}${open?'55':'28'}`, borderRadius:12, overflow:'hidden', transition:'border-color .2s' }}>
+                  {/* step header — always visible */}
+                  <div style={{ background:`${badge}14`, padding:'9px 12px', display:'flex', alignItems:'center', gap:10 }}>
                     <div style={{ width:24, height:24, borderRadius:'50%', background:`${badge}22`, border:`1.5px solid ${badge}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                       <span style={{ fontFamily:"'Share Tech Mono',monospace", color:badge, fontSize:9, fontWeight:700 }}>{num}</span>
                     </div>
@@ -636,18 +621,38 @@ Cálculo:
                       <div style={{ color:badge, fontSize:10, fontWeight:700, letterSpacing:'0.08em', fontFamily:"'Chakra Petch',sans-serif" }}>{title}</div>
                       <div style={{ color:'#557089', fontSize:8, marginTop:1 }}>{subtitle}</div>
                     </div>
-                    <span className="code-result">{result}</span>
+                    <span className="code-result" style={{ marginRight:6 }}>{result}</span>
+                    {/* ¿De dónde? individual button */}
+                    <button
+                      onClick={() => toggleStep(num)}
+                      style={{
+                        background: open ? `${badge}22` : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${badge}${open?'88':'30'}`,
+                        borderRadius:7, padding:'4px 9px',
+                        color: open ? badge : '#557089',
+                        fontSize:8, fontWeight:700, cursor:'pointer',
+                        letterSpacing:'0.06em', fontFamily:"'Chakra Petch',sans-serif",
+                        display:'flex', alignItems:'center', gap:4, flexShrink:0,
+                        transition:'all .2s'
+                      }}
+                    >
+                      <span style={{ fontSize:10, lineHeight:1, transition:'transform .2s', display:'inline-block', transform: open ? 'rotate(90deg)' : 'rotate(0)' }}>›</span>
+                      ¿CÓMO?
+                    </button>
                   </div>
-                  {/* formula block */}
-                  <div style={{ padding:'10px 12px' }}>
-                    <pre className="code-block">{formula}</pre>
-                    <div style={{ marginTop:8, padding:'6px 10px', background:`${badge}0d`, borderRadius:6, border:`1px solid ${badge}20`, display:'flex', alignItems:'center', gap:7 }}>
-                      <span style={{ color:badge, fontSize:12 }}>→</span>
-                      <span style={{ color:'#87a0b3', fontSize:9, lineHeight:1.4 }}>{conclusion}</span>
+                  {/* formula block — per step */}
+                  {open && (
+                    <div className="fade-up" style={{ padding:'10px 12px', borderTop:`1px solid ${badge}22` }}>
+                      <pre className="code-block">{formula}</pre>
+                      <div style={{ marginTop:8, padding:'6px 10px', background:`${badge}0d`, borderRadius:6, border:`1px solid ${badge}20`, display:'flex', alignItems:'center', gap:7 }}>
+                        <span style={{ color:badge, fontSize:12 }}>→</span>
+                        <span style={{ color:'#87a0b3', fontSize:9, lineHeight:1.4 }}>{conclusion}</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
-              ))}
+              );
+            })}
 
               {/* Triangle summary */}
               <div style={{ background:'rgba(5,10,18,0.9)', border:'1px solid rgba(168,85,247,0.25)', borderRadius:12, padding:'12px 14px' }}>
@@ -671,7 +676,6 @@ Cálculo:
                 </div>
               </div>
             </div>
-          )}
 
           {/* live values snapshot */}
           <div style={{ background:'rgba(30,200,255,0.05)', border:'1px solid rgba(30,200,255,0.15)', borderRadius:12, padding:'11px 13px' }}>
@@ -743,51 +747,42 @@ const App = () => {
         ════════════════════════════════════════ */}
         <div className="glass-header" style={{ position:'sticky',top:0,zIndex:50, padding:'12px 15px 14px', borderLeft:'none',borderRight:'none',borderTop:'none', borderBottomLeftRadius:22,borderBottomRightRadius:22, borderBottom:'1px solid rgba(30,200,255,0.1)' }}>
 
-          {/* ── BRANDING PRINCIPAL "INTEGR" ── */}
-          <div style={{ display:'flex', alignItems:'center', gap:13, marginBottom:10 }}>
-            {/* Logo — glowing card, high-res */}
-            <div style={{
-              width:68, height:68, flexShrink:0, borderRadius:16,
-              background:'#ffffff',
-              boxShadow:'0 0 0 2px rgba(30,200,255,0.5), 0 0 22px rgba(30,200,255,0.3), 0 0 50px rgba(30,200,255,0.12)',
-              padding:5, overflow:'hidden', display:'flex',
-              alignItems:'center', justifyContent:'center'
-            }}>
+          {/* ── BRANDING PRINCIPAL — logo RGBA transparente con glow eléctrico ── */}
+          <div style={{ marginBottom:10 }}>
+            {/* Fila logo + status */}
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+              {/* Logo transparente flotando sobre oscuro — multi-layer drop-shadow */}
               <img
-                src="Gemini_Generated_Image_-2.png"
-                alt="INTEGR Ingeniería"
-                style={{ width:'100%', height:'100%', objectFit:'contain', mixBlendMode:'multiply' }}
+                src="logo_transparente.png"
+                alt="INTEGR Ingeniería y Tecnología"
+                style={{
+                  height:52,
+                  width:'auto',
+                  filter:[
+                    'drop-shadow(0 0  6px rgba(30,200,255,1.0))',
+                    'drop-shadow(0 0 16px rgba(30,200,255,0.65))',
+                    'drop-shadow(0 0 36px rgba(30,200,255,0.35))',
+                    'drop-shadow(0 0 60px rgba(30,200,255,0.18))'
+                  ].join(' ')
+                }}
               />
-            </div>
-
-            <div style={{ flex:1, minWidth:0 }}>
-              {/* INTEGR — focal visual principal */}
-              <div className="integr-glow" style={{
-                fontFamily:"'Chakra Petch',sans-serif", fontStyle:'italic',
-                fontSize:28, fontWeight:700, lineHeight:1, letterSpacing:'0.02em',
-                color:'#ffffff'
-              }}>
-                INTEGR
-              </div>
-              <div style={{ color:'#e2eeff', fontSize:10, fontWeight:600, fontFamily:'Manrope', marginTop:2, lineHeight:1.2 }}>
-                Ingeniería y Tecnología
-              </div>
-              <div style={{ color:'#1ec8ff', fontSize:7, letterSpacing:'0.18em', fontWeight:700, textTransform:'uppercase', fontFamily:'Manrope', marginTop:2 }}>
-                Simulador de Tablero Eléctrico
+              {/* Clock + status */}
+              <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
+                <Clock/>
+                <div style={{
+                  background:masterOn?'rgba(34,211,139,0.12)':'rgba(255,95,109,0.1)',
+                  border:`1px solid ${masterOn?'rgba(34,211,139,0.36)':'rgba(255,95,109,0.32)'}`,
+                  borderRadius:20, padding:'2px 8px', transition:'all .35s'
+                }}>
+                  <span style={{ color:masterOn?'#22d38b':'#ff5f6d', fontSize:7.5, fontWeight:700, letterSpacing:'0.1em', fontFamily:"'Share Tech Mono',monospace" }}>
+                    {masterOn?'ONLINE':'OFFLINE'}
+                  </span>
+                </div>
               </div>
             </div>
-
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:3 }}>
-              <Clock/>
-              <div style={{
-                background:masterOn?'rgba(34,211,139,0.12)':'rgba(255,95,109,0.1)',
-                border:`1px solid ${masterOn?'rgba(34,211,139,0.36)':'rgba(255,95,109,0.32)'}`,
-                borderRadius:20, padding:'2px 8px', transition:'all .35s'
-              }}>
-                <span style={{ color:masterOn?'#22d38b':'#ff5f6d', fontSize:7.5, fontWeight:700, letterSpacing:'0.1em', fontFamily:"'Share Tech Mono',monospace" }}>
-                  {masterOn?'ONLINE':'OFFLINE'}
-                </span>
-              </div>
+            {/* Subtítulo debajo del logo */}
+            <div style={{ color:'#2c4a60', fontSize:8, letterSpacing:'0.18em', textTransform:'uppercase', fontFamily:'Manrope', fontWeight:700 }}>
+              Simulador de Tablero Eléctrico Industrial · 3Φ 480V
             </div>
           </div>
 
@@ -942,24 +937,23 @@ const App = () => {
           <div style={{ marginTop:24, borderRadius:18, border:'1px solid rgba(255,255,255,0.055)', background:'rgba(255,255,255,0.016)', padding:14 }}>
 
             {/* logo + nombre empresa */}
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
-              <div style={{
-                width:58, height:58, flexShrink:0, borderRadius:14,
-                background:'#ffffff',
-                boxShadow:'0 0 0 1.5px rgba(30,200,255,0.45),0 0 16px rgba(30,200,255,0.22)',
-                padding:4, display:'flex', alignItems:'center', justifyContent:'center'
-              }}>
-                <img src="Gemini_Generated_Image_-2.png" alt="Logo INTEGR"
-                  style={{ width:'100%', height:'100%', objectFit:'contain', mixBlendMode:'multiply' }}/>
-              </div>
-              <div>
-                <div style={{ color:'#557089', fontSize:7.5, letterSpacing:'0.16em', textTransform:'uppercase' }}>Sello Técnico</div>
-                <div style={{ color:'#d6e4f0', fontSize:15, fontWeight:700, fontFamily:"'Chakra Petch',sans-serif", marginTop:2 }}>
-                  INTEGR Ingeniería y Tecnología
-                </div>
-                <div style={{ color:'#87a0b3', fontSize:9, marginTop:3 }}>
-                  Simulador Industrial · Sistema 3Φ 480V · v2.0
-                </div>
+            <div style={{ marginBottom:14 }}>
+              <div style={{ color:'#557089', fontSize:7.5, letterSpacing:'0.16em', textTransform:'uppercase', marginBottom:8 }}>Sello Técnico</div>
+              {/* Logo transparente centrado con glow */}
+              <img
+                src="logo_transparente.png"
+                alt="INTEGR Ingeniería y Tecnología"
+                style={{
+                  height:44, width:'auto', display:'block', marginBottom:8,
+                  filter:[
+                    'drop-shadow(0 0 5px rgba(30,200,255,0.9))',
+                    'drop-shadow(0 0 14px rgba(30,200,255,0.5))',
+                    'drop-shadow(0 0 28px rgba(30,200,255,0.25))'
+                  ].join(' ')
+                }}
+              />
+              <div style={{ color:'#87a0b3', fontSize:9 }}>
+                Simulador Industrial · Sistema 3Φ 480V · v2.0
               </div>
             </div>
 
@@ -976,22 +970,24 @@ const App = () => {
               </div>
             </div>
 
-            {/* Firma autorizada — white paper card + mix-blend multiply */}
+            {/* Firma autorizada — transparent PNG on dark bg */}
             <div style={{ marginBottom:10 }}>
               <div style={{ color:'#2c4158', fontSize:7.5, textTransform:'uppercase', letterSpacing:'0.16em', marginBottom:6 }}>
                 Firma autorizada
               </div>
-              <div style={{
-                background:'rgba(255,255,255,0.94)',
-                borderRadius:12, padding:'10px 16px',
-                boxShadow:'0 0 0 1px rgba(30,200,255,0.2), 0 4px 20px rgba(0,0,0,0.35)'
-              }}>
-                <img
-                  src="firmasaul.png"
-                  alt="Firma Saúl Villalobos"
-                  style={{ height:68, width:'100%', objectFit:'contain', objectPosition:'left', mixBlendMode:'multiply' }}
-                />
-              </div>
+              <img
+                src="firma_transparente.png"
+                alt="Firma Saúl Villalobos"
+                style={{
+                  height:72, width:'auto', display:'block',
+                  filter:[
+                    'invert(1)',
+                    'brightness(1.15)',
+                    'drop-shadow(0 0 4px rgba(30,200,255,0.5))',
+                    'drop-shadow(0 0 12px rgba(30,200,255,0.25))'
+                  ].join(' ')
+                }}
+              />
             </div>
 
             {/* spec strip */}
